@@ -1,0 +1,111 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Eddo W. Hintoso"
+date: "September 22, 2015"
+output:
+    html_document:
+        keep_md: true
+        toc: yes
+        theme: readable
+        highlight: tango
+---
+
+```{r, warning = FALSE, message = FALSE, echo = FALSE}
+library(knitr)
+opts_chunk$set(cache = TRUE)
+```
+
+
+# Processing Data
+
+First and foremost, download the files and load necessary packages:
+```{r, warning = FALSE, message = FALSE}
+# load package if not yet loaded
+if(!("caret" %in% loadedNamespaces())) {
+    library(caret)
+}
+# download data
+if(!file.exists("pml-training.csv")){
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+        destfile = "pml-training.csv")
+}
+if(!file.exists("pml-testing.csv")){
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
+        destfile = "pml-testing.csv")
+}
+# load data
+train <- read.csv('pml-training.csv', header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+test <- read.csv('pml-testing.csv', header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+```
+
+Note that I have treated some string values as `NA`. This is because upon primary inspection of the data there were many missing data that best be uniformly expressed as `NA`. The below R code is shown on how the author came to detect missing values - however it is only for display and will not be evaluated due to the length of the output exceeding the degree of readability. 
+```{r, eval = FALSE}
+# check if there any NA in any column variables of train
+TRUE %in% sapply(train, function(col) {NA %in% col})
+# individually inspect odd outputs by iterating over factor and character variables
+# helps to see the factor levels
+for (col in 1:ncol(train)) {
+    if(class(train[, col]) == "factor" |
+       class(train[, col]) == "character") {
+        print(unique(train[, col]))
+    }
+}
+```
+
+In order to run the machine learning algorithms, the features used cannot contain any `NA` values. Let us quickly inspect how many variables are complete:
+```{r}
+completionStatus <- sapply(train, function(col) {!(NA %in% col)})
+c("Complete Variables" = sum(completionStatus),
+  "Total Variables" = length(completionStatus),
+  "Percent Completion" = 100 * sum(completionStatus) / length(completionStatus))
+```
+
+We now know that only 60 variables have complete data - so we will only use these column variables for our predictor models, since imputing data carries a considerable risk and may affect the accuracy of the predictor model we're going to fit. Think of this as taking a measure to potentially overfit a predictor model due to too many column variables. Now all that is left is filtering the training and testing data sets from the incomplete data columns:
+```{r}
+# initialize index to empty vector
+complete_index = c()
+# iterate from second column since first column is just row index
+for (col in 2:length(completionStatus)) {
+    if (completionStatus[[col]] == TRUE) {
+        complete_index = c(complete_index, col)
+    }
+}
+# filter training and testing dataset into just complete data columns
+train <- train[, complete_index]
+test <- test[, complete_index]
+```
+
+Both the training and testing data should now only have 59 column variables, and this is confirmed below:
+```{r}
+c(ncol(train), ncol(test))
+```
+
+However, this isn't the last step to preparing a useful training data set. Upon further inspection, some column variables can be argued to not being contributable to a predicting model.
+```{r}
+# infer from variable names
+names(train)
+# examine structure
+str(train[, 1:10])
+```
+
+It can be inferred that the first six variables ``r names(train)[1:6]`` are administrative, integer/factor variables, unlike the other numeric variables that serve to contribute to building a good predictive model. Thus, more variable elimination is required, bringing it down to 53 variables.
+```{r}
+# eliminate first 6 columns
+train <- train[, -(1:6)]
+test <- test[, -(1:6)]
+# check dimensions
+c(ncol(train), ncol(test))
+```
+
+---
+
+# Cross Validation
+
+We set `test` set aside and split the `train` data into two sections for cross validation. We will allocate 70% of the data to train the model and 30% to validate it.
+
+We expect that the **out-of-bag (OOB)** error rates returned by the models should be good estimate for the out of sample error rate. We will get actual estimates of error rates from the **accuracies** achieved by the models.
+```{r}
+# split train data set
+
+```
+
