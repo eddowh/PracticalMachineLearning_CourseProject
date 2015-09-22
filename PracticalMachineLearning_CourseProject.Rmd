@@ -4,8 +4,8 @@ author: "Eddo W. Hintoso"
 date: "September 22, 2015"
 output:
   pdf_document:
-    toc: yes
     highlight: tango
+    toc: yes
   html_document:
     highlight: tango
     keep_md: yes
@@ -18,6 +18,7 @@ library(knitr)
 opts_chunk$set(cache = TRUE, warning = FALSE, message = FALSE)
 ```
 
+\break
 
 # Processing Data
 
