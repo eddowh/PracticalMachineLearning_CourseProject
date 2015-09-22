@@ -1,6 +1,12 @@
-# Practical Machine Learning Course Project
-Eddo W. Hintoso  
-September 22, 2015  
+---
+title: "Practical Machine Learning Course Project"
+author: "Eddo W. Hintoso"
+date: "September 22, 2015"
+output:
+    html_document:
+        keep_md: true
+        theme: flatly
+---
 
 ## Background
 
