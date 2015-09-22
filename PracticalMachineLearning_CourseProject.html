@@ -83,6 +83,9 @@ img {
 <ul>
 <li><a href="#processing-data">Processing Data</a></li>
 <li><a href="#cross-validation">Cross Validation</a></li>
+<li><a href="#comparing-models">Comparing Models</a></li>
+<li><a href="#run-time-graphical-analysis-of-models">Run-Time Graphical Analysis of Models</a></li>
+<li><a href="#result">Result</a></li>
 </ul>
 </div>
 
@@ -185,6 +188,250 @@ test &lt;-<span class="st"> </span>test[, -(<span class="dv">1</span>:<span clas
 </div>
 <div id="cross-validation" class="section level1">
 <h1>Cross Validation</h1>
+<p>We set <code>test</code> set aside and split the <code>train</code> data into two sections for cross validation. We will allocate 70% of the data to train the model and 30% to validate it.</p>
+<p>We expect that the <strong>out-of-bag (OOB)</strong> error rates returned by the models should be good estimate for the out of sample error rate. We will get actual estimates of error rates from the <strong>accuracies</strong> achieved by the models.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># set seed</span>
+<span class="kw">set.seed</span>(<span class="dv">3433</span>)
+<span class="co"># split train data set</span>
+inTrain &lt;-<span class="st"> </span><span class="kw">createDataPartition</span>(train$classe, <span class="dt">p =</span> <span class="fl">0.7</span>, <span class="dt">list =</span> <span class="ot">FALSE</span>)
+trainData &lt;-<span class="st"> </span>train[inTrain, ]
+validation &lt;-<span class="st"> </span>train[-inTrain, ]
+<span class="co"># print out dimensions of each data sets</span>
+<span class="kw">rbind</span>(<span class="dt">trainData =</span> <span class="kw">dim</span>(trainData), <span class="dt">validation =</span> <span class="kw">dim</span>(validation), <span class="dt">test =</span> <span class="kw">dim</span>(test))</code></pre>
+<pre><code>##             [,1] [,2]
+## trainData  13737   53
+## validation  5885   53
+## test          20   53</code></pre>
+<hr />
+</div>
+<div id="comparing-models" class="section level1">
+<h1>Comparing Models</h1>
+<p>For this project, I choose to predict the <code>classe</code> variable with all the other variables using a <strong>random forest (<code>“rf”</code>)</strong> and <strong>boosted trees (<code>“gbm”</code>)</strong>. Finally, I will stack the predictions together using random forests (“rf”) for a combined model.</p>
+<p>First, however, we will use parallel processing capabilities to speed up the training speed, since creating four predictor models is computationally expensive.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># process in parallel</span>
+<span class="kw">library</span>(doParallel)
+<span class="kw">registerDoSEQ</span>()
+cl &lt;-<span class="st"> </span><span class="kw">makeCluster</span>(<span class="kw">detectCores</span>(), <span class="dt">type=</span><span class="st">'PSOCK'</span>)
+<span class="kw">registerDoParallel</span>(cl)</code></pre>
+<p>Now we are ready to fit the model predictors, but not without setting a seed first:</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># set seed</span>
+<span class="kw">set.seed</span>(<span class="dv">62433</span>)
+<span class="co"># load packages</span>
+<span class="kw">library</span>(randomForest)
+<span class="co"># fitting random forest model predictor and record elapsed time, printing out results</span>
+elapsedFitRF &lt;-<span class="st"> </span><span class="kw">system.time</span>(
+    <span class="kw">print</span>(
+        fitRF &lt;-<span class="st"> </span><span class="kw">randomForest</span>(classe ~<span class="st"> </span>., <span class="dt">data=</span>trainData, <span class="dt">method=</span><span class="st">&quot;rf&quot;</span>)
+    )
+)</code></pre>
+<pre><code>## 
+## Call:
+##  randomForest(formula = classe ~ ., data = trainData, method = &quot;rf&quot;) 
+##                Type of random forest: classification
+##                      Number of trees: 500
+## No. of variables tried at each split: 7
+## 
+##         OOB estimate of  error rate: 0.46%
+## Confusion matrix:
+##      A    B    C    D    E  class.error
+## A 3905    1    0    0    0 0.0002560164
+## B   13 2643    2    0    0 0.0056433409
+## C    0   12 2381    3    0 0.0062604341
+## D    0    0   21 2229    2 0.0102131439
+## E    0    0    4    5 2516 0.0035643564</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># fitting boosted trees model predictor and record elapsed time, printing out results</span>
+<span class="kw">library</span>(gbm)
+elapsedFitGBM &lt;-<span class="st"> </span><span class="kw">system.time</span>(
+    <span class="kw">print</span>(
+        fitGBM &lt;-<span class="st"> </span><span class="kw">train</span>(classe ~<span class="st"> </span>., <span class="dt">data=</span>trainData, <span class="dt">method=</span><span class="st">&quot;gbm&quot;</span>, <span class="dt">verbose=</span><span class="ot">FALSE</span>)
+    )
+)</code></pre>
+<pre><code>## Stochastic Gradient Boosting 
+## 
+## 13737 samples
+##    52 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## No pre-processing
+## Resampling: Bootstrapped (25 reps) 
+## Summary of sample sizes: 13737, 13737, 13737, 13737, 13737, 13737, ... 
+## Resampling results across tuning parameters:
+## 
+##   interaction.depth  n.trees  Accuracy   Kappa      Accuracy SD
+##   1                   50      0.7505262  0.6836489  0.005733940
+##   1                  100      0.8186235  0.7704259  0.006455805
+##   1                  150      0.8502340  0.8105100  0.005871803
+##   2                   50      0.8520247  0.8125426  0.005809940
+##   2                  100      0.9027890  0.8770091  0.003699316
+##   2                  150      0.9271088  0.9078027  0.003841337
+##   3                   50      0.8932589  0.8649095  0.005442478
+##   3                  100      0.9382401  0.9218727  0.003587542
+##   3                  150      0.9569762  0.9455814  0.002852928
+##   Kappa SD   
+##   0.007402873
+##   0.008172871
+##   0.007393995
+##   0.007316754
+##   0.004682730
+##   0.004846920
+##   0.006864450
+##   0.004528454
+##   0.003616718
+## 
+## Tuning parameter 'shrinkage' was held constant at a value of 0.1
+## 
+## Tuning parameter 'n.minobsinnode' was held constant at a value of 10
+## Accuracy was used to select the optimal model using  the largest value.
+## The final values used for the model were n.trees = 150,
+##  interaction.depth = 3, shrinkage = 0.1 and n.minobsinnode = 10.</code></pre>
+<p>After we have trained our models, we predict:</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># predict using model predictors and record elapsed time</span>
+elapsedPredRF &lt;-<span class="st"> </span><span class="kw">system.time</span>(
+    predRF &lt;-<span class="st"> </span><span class="kw">predict</span>(fitRF, <span class="dt">newdata=</span>validation)
+)
+elapsedPredGBM &lt;-<span class="st"> </span><span class="kw">system.time</span>(
+    predGBM &lt;-<span class="st"> </span><span class="kw">predict</span>(fitGBM, <span class="dt">newdata=</span>validation)
+)
+
+<span class="co"># create new dataframe for stacking predictors</span>
+predAll &lt;-<span class="st"> </span><span class="kw">data.frame</span>(predRF, predGBM, <span class="dt">classe =</span> validation$classe)
+elapsedFitStacked &lt;-<span class="st"> </span><span class="kw">system.time</span>(
+    fitStacked &lt;-<span class="st"> </span><span class="kw">randomForest</span>(classe ~<span class="st"> </span>., <span class="dt">data=</span>predAll, <span class="dt">method =</span> <span class="st">'rf'</span>)
+)
+
+<span class="co"># predicting with stacked predictors</span>
+elapsedPredStacked &lt;-<span class="st"> </span><span class="kw">system.time</span>(
+    predStacked &lt;-<span class="st"> </span><span class="kw">predict</span>(fitStacked, <span class="dt">newdata=</span>validation)
+)</code></pre>
+<p>From the above, we can see that <strong>randomForest</strong> is the better performing algorithm with <strong>0.46% out-of-bag (OOB) error rate</strong>, which is what we expect the out of sample error rate to be.</p>
+<hr />
+</div>
+<div id="run-time-graphical-analysis-of-models" class="section level1">
+<h1>Run-Time Graphical Analysis of Models</h1>
+<p>In this section we will attempt to see what is the best model to use, considering trade-offs. First, we need to the confusion matrices containing analysis of the models into variables:</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># confusion matrices</span>
+cmRF &lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(predRF, validation$classe)
+cmGBM &lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(predGBM, validation$classe)
+cmStacked &lt;-<span class="st"> </span><span class="kw">confusionMatrix</span>(predStacked, validation$classe)
+
+<span class="co"># create table</span>
+analysis_table &lt;-<span class="st"> </span><span class="kw">data.frame</span>(<span class="st">&quot;Model&quot;</span> =<span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;Random Forest&quot;</span>,
+                                          <span class="st">&quot;Generalized Boosted Trees&quot;</span>,
+                                          <span class="st">&quot;Random Forest + GBM Stacked&quot;</span>),
+                             <span class="st">&quot;Accuracy&quot;</span> =<span class="st"> </span><span class="dv">100</span> *<span class="st"> </span><span class="kw">c</span>(cmRF$overall[[<span class="dv">1</span>]],
+                                                  cmGBM$overall[[<span class="dv">1</span>]],
+                                                  cmStacked$overall[[<span class="dv">1</span>]]),
+                             <span class="st">&quot;Training Speed&quot;</span> =<span class="st"> </span><span class="kw">c</span>(elapsedFitRF[[<span class="st">'elapsed'</span>]],
+                                                  elapsedFitGBM[[<span class="st">'elapsed'</span>]],
+                                                  (elapsedFitRF[[<span class="st">'elapsed'</span>]] +
+<span class="st">                                                       </span>elapsedFitGBM[[<span class="st">'elapsed'</span>]] +
+<span class="st">                                                       </span>elapsedFitStacked[[<span class="st">'elapsed'</span>]])),
+                             <span class="st">&quot;Prediction Speed&quot;</span> =<span class="st"> </span><span class="kw">c</span>(elapsedPredRF[[<span class="st">'elapsed'</span>]],
+                                                    elapsedPredGBM[[<span class="st">'elapsed'</span>]],
+                                                    (elapsedPredRF[[<span class="st">'elapsed'</span>]] +
+<span class="st">                                                         </span>elapsedPredGBM[[<span class="st">'elapsed'</span>]] +
+<span class="st">                                                         </span>elapsedPredStacked[[<span class="st">'elapsed'</span>]])))
+                             
+<span class="kw">names</span>(analysis_table) &lt;-<span class="st"> </span><span class="kw">c</span>(<span class="st">'Model'</span>, <span class="st">'Accuracy'</span>, <span class="st">'Training Speed (sec)'</span>, <span class="st">'Prediction Speed (sec)'</span>)
+
+<span class="co"># round numeric columns</span>
+analysis_table[, <span class="dv">2</span>:<span class="dv">4</span>] &lt;-<span class="st"> </span><span class="kw">round</span>(analysis_table[, <span class="dv">2</span>:<span class="dv">4</span>], <span class="dt">digits =</span> <span class="dv">2</span>)
+
+<span class="co"># display table nicely</span>
+<span class="kw">kable</span>(analysis_table,
+      <span class="dt">align =</span> <span class="st">&quot;c&quot;</span>)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="center">Model</th>
+<th align="center">Accuracy</th>
+<th align="center">Training Speed (sec)</th>
+<th align="center">Prediction Speed (sec)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="center">Random Forest</td>
+<td align="center">99.27</td>
+<td align="center">36.53</td>
+<td align="center">0.84</td>
+</tr>
+<tr class="even">
+<td align="center">Generalized Boosted Trees</td>
+<td align="center">96.38</td>
+<td align="center">1625.36</td>
+<td align="center">0.34</td>
+</tr>
+<tr class="odd">
+<td align="center">Random Forest + GBM Stacked</td>
+<td align="center">99.27</td>
+<td align="center">1663.28</td>
+<td align="center">1.23</td>
+</tr>
+</tbody>
+</table>
+<p>To better visualize the run-time results, we can also make a bar graph:</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(ggplot2)
+<span class="co"># accuracy comparisons</span>
+accuracy_plot &lt;-<span class="st"> </span><span class="kw">ggplot</span>(<span class="kw">transform</span>(analysis_table,
+                                  <span class="dt">Model =</span> <span class="kw">reorder</span>(Model, Accuracy)),
+                        <span class="kw">aes</span>(<span class="dt">x =</span> Model, <span class="dt">y =</span> Accuracy)) +
+<span class="st">    </span><span class="kw">geom_bar</span>(<span class="dt">stat=</span><span class="st">&quot;identity&quot;</span>,
+             <span class="kw">aes</span>(<span class="dt">fill =</span> Accuracy ==<span class="st"> </span><span class="kw">max</span>(Accuracy)),
+             <span class="dt">position=</span><span class="kw">position_dodge</span>()) +
+<span class="st">    </span><span class="kw">scale_fill_discrete</span>(<span class="dt">guide =</span> <span class="st">'none'</span>) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">labs</span>(<span class="dt">x =</span> <span class="st">'Model'</span>,
+         <span class="dt">y =</span> <span class="st">'Rate (%)'</span>,
+         <span class="dt">title =</span> <span class="st">'Model Accuracy'</span>) +
+<span class="st">    </span><span class="kw">coord_flip</span>()
+<span class="co"># training speed comparisons</span>
+train_speed_plot &lt;-<span class="st"> </span><span class="kw">ggplot</span>(<span class="kw">transform</span>(analysis_table,
+                                     <span class="dt">Model =</span> <span class="kw">reorder</span>(Model, analysis_table[, <span class="dv">3</span>])),
+                           <span class="kw">aes</span>(<span class="dt">x =</span> Model, <span class="dt">y =</span> analysis_table[, <span class="dv">3</span>])) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">geom_bar</span>(<span class="dt">stat=</span><span class="st">&quot;identity&quot;</span>,
+             <span class="kw">aes</span>(<span class="dt">fill =</span> analysis_table[, <span class="dv">3</span>] ==<span class="st"> </span><span class="kw">min</span>(analysis_table[, <span class="dv">3</span>])),
+             <span class="dt">position=</span><span class="kw">position_dodge</span>()) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">labs</span>(<span class="dt">x =</span> <span class="st">'Model'</span>,
+         <span class="dt">y =</span> <span class="st">'Time (sec)'</span>,
+         <span class="dt">title =</span> <span class="st">'Training Speed'</span>) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">scale_fill_discrete</span>(<span class="dt">guide =</span> <span class="st">'none'</span>) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">coord_flip</span>()
+<span class="co"># prediction speed comparisons</span>
+pred_speed_plot &lt;-<span class="st"> </span><span class="kw">ggplot</span>(<span class="kw">transform</span>(analysis_table,
+                                    <span class="dt">Model =</span> <span class="kw">reorder</span>(Model, analysis_table[, <span class="dv">4</span>])),
+                          <span class="kw">aes</span>(<span class="dt">x =</span> Model, <span class="dt">y =</span> analysis_table[, <span class="dv">4</span>])) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">geom_bar</span>(<span class="dt">stat=</span><span class="st">&quot;identity&quot;</span>,
+             <span class="kw">aes</span>(<span class="dt">fill =</span> analysis_table[, <span class="dv">4</span>] ==<span class="st"> </span><span class="kw">min</span>(analysis_table[, <span class="dv">4</span>])), 
+             <span class="dt">position=</span><span class="kw">position_dodge</span>()) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">labs</span>(<span class="dt">x =</span> <span class="st">'Model'</span>,
+         <span class="dt">y =</span> <span class="st">'Time (sec)'</span>,
+         <span class="dt">title =</span> <span class="st">'Prediction Speed'</span>) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">scale_fill_discrete</span>(<span class="dt">guide =</span> <span class="st">'none'</span>) +<span class="st"> </span>
+<span class="st">    </span><span class="kw">coord_flip</span>()
+<span class="co"># plot all three at once</span>
+<span class="kw">library</span>(gridExtra)
+<span class="kw">grid.arrange</span>(accuracy_plot,
+             train_speed_plot,
+             pred_speed_plot,
+             <span class="dt">ncol =</span> <span class="dv">1</span>)</code></pre>
+<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAqAAAAHgCAMAAABNUi8GAAABBVBMVEUAAAAAADoAAGYAOjoAOmYAOpAAZrYAv8Q6AAA6ADo6OgA6ZmY6ZrY6kJA6kNtmAABmADpmOgBmZgBmZmZmtrZmtv9/f39/f5V/f6t/lZV/lcF/q6t/q9aQOgCQOjqQkDqQtpCQ27aQ2/+Vf3+Vf5WVf6uVlX+VlauVlcGVq6uVwcGVwdaVweurf3+rf5Wrf6urlX+rwcGr1v+2ZgC225C2/7a2/9u2///BlX/BlZXBwZXB1sHB6//Wq3/WwZXW68HW/+vW///bkDrb25Db/7bb/9vb///l5eXrwZXr1tbr/9br///y8vL4dm3/tmb/1qv/25D/68H//7b//9b//9v//+v///8WURVlAAAACXBIWXMAAA7DAAAOwwHHb6hkAAAgAElEQVR4nO2djX/ixpnH8ebsOs2d6fVq1nXw3dXeTbetvdugtnFa02TpdePULRhs8///KTfPzDMvghEI9MIj9Pt+kkVC0owQX88bejSdOQCC6ez6BABYBQQFooGgQDQQFIgGggLRQFAgGggKRANBgWggKBANBAWigaBANBAUiAaCAtFAUCAaCApEA0GBaCAoEA0EBaKBoEA0EBSIBoIC0UBQIBoICkQDQYFoIOguSDqvvtELzxedk8j2x+OjcPX54vBTsHJwWenJyQKC7oKk0znVC4/HGwuacci+AkF3QXLwU2Pg6LPjTQVNXv2ci99WAEF3QfLqf7Rkzxf/0d1Q0Fn3aNymIhSC7oLk1R8+p4bk4+e/0oKqpminYyScdTudIyOoftds9oKOOqezLq/SvqY0tUtmT/r3+eJo1FGt1XGHE3H7jHQbVm2v9zNvCQTdBcmrP12QNKPD/yNBVbOSIHvM4mckKL97lBL0+ULtlZgWrNnBH6WWQkE/O1bOj3QanZNgn0fdqhhzK1g6EHQXJK++GSmTVCk2I0ETslD/a3r1yiW7qGUMBB2b7VzAnugSNbXkBaX3Zl3yl4rcxX2ShjRkIeguUHaMVUX7eHxKgnKVTYUjNz7HSlBepKo4EDSh+tmMNKnWKL/pl0JBrYHUUjj85PfRdXywKhsIuguUoGTmyLw8ck9eicOLpA/X8CSXF5Takb7Otn0lvxQKqo/hVA4/+X3mlGdTangIuhOofk0OPyVH8xyCvvrGC8pNyqAtSWQLSkKbIjoQVGfdkBoegu4E0mN88Kvu6XxVFe+McoK6eptapvEq3rc56RhTUNJ6WKdT1k0ZqYKgu4AEnXX/S/+b6iSpf4JOEsk17gRt0HGHLXs81t2eU9Nh8kv6eLXqBT3SxWi4N73xxedN+bkUgu4CXcEmRp4T17Kkno+p2L8IhpnUu07QxP0MT0Wo2cEfRUt62PPf/jOs4l2LwO5DRwc/TckGgu4CLSgN+RhBzZC8KRxpMRyot21K2hZU07ZoXBio163Uw7/7TpI29DQxvX67T9h8kA4EbSOj5twQBUFbiPuttAFA0NZBVX1DBkHnELSFZNwkLZRWCPrDMrH3VvLPTQ/YNAdk8EPsu4OgdV19ZLA2g9h3B0HruvrIYG0Gse+urYL+BOwYCOqBoAKBoB4IKhAI6oGgAoGgHggqEAjqgaACKUvQ6VVPcfYxsunp/d2qY3qDjSxS6d2og67t4a/v1ILO9+mGs3+5Ve/3Y4e+3C5mFp4cBBVIaYK+JTmG5w8RoTIFfRvzed0O06sByXjNWydnH6dvviLvJr/k3Yd9UrEfORyCNo5yBY0aVYqg97ZEfLm95k1mq0p9+vbP9N7wa7O7yc/tEAJBG8eWgrqwQX4kQCDoRNevShpdD6u1L99TLUx18cvt11e9vlrup/0zW6e//v3ZR1V/U0U9obpbLb+2+jhBvXVcglJe3717mD99+M5sosJTu6cPN6ej2wMDLehEnZbP5UstqG5q9CKfe9dfD4jZmEPQJbiK76vvXjnw+m56dU21L63dk2oDWnu5PX94ujl/mL65Yy+1PbyV6m4y6F7tpLSZqP0iJejEtSK4CUt1/fffqv37dndqpPb5nPh06EWtquQn+g/F5GJOzn0GlKACKbeTdG1WqNpVDiojSCddCX+kFxLD/j/3hSFv5UNokdQJdpj0uDtkBR3SGhfab2jh/no+HAQ+K0d9G1QlyFqrIpz+NjgXPjkIKpkiguowwOTESaa7L1pVYw+JYxwgFZSVGYLyVpOEMZEKwUG0DTp1DU1ug97QgdN3//iQbnMace3p3FtBz//K9T2/CUGFU0DQ8cHliAKpT5w3VH1SOcj2bFqCmkNs8lTpZ3eSvKB64en9X97ZFsFEjzZZ483puBJ0QEbaHSGofLYX9PniZE6PthoFnaTh+QPpMXQl6GIbNCqobYOqVdpCBaLSSo8fOXucoHNq3ar9bBV/b5qqw54dd6Ji8sG8b1Kh09Ft0Df6L0RpybmgDdoAthd01j3Vgo4DQZ9u+jRK/jsuvUyd/dugFx8V1PbiaZV77roXTyPukVF8Ow7vfhvQYwev73x6qona082G3oBPJ+jFUyefc+GTg6CCKV6CJs0J/VsDBBVI4TboqEGhf2uAoAIpIKgZrW9ObP9aIoIi5ENgBrHvrq13M0FQgRnEvru2CrrrCg5sKejSb/H7AAQVSIES1MzDM96fRigEFcj2gtoZdEYYZgLVsb2gNFBPjFHFg+ooUoKa20QwUA8qpFAblIrQ2h5yWn3UEwQVSAFBTVe+tvKz+qgnCCqQIoLWS9VRTxBUJE0UtPyoJ8QkiSWnHVFB9YwltQ2DVh31hBJUJIU6SXqq6LruZqo06kkDQQWyvaB2mKmugfqqo54gqEi2F7Tugfqqo54gqEiaVYJWGfUEQUXSoDZo5VFPEFQgBQStuRdfPRBUIEUE3TcgqEAgqCciKEI+BGYQ++4WBdVTQLfgjnoIKjCD2He3VILOunvU+GQi1+ZfYBeUIGjTJhvNAwSVQimCKpL9qd4JCCqFsgSlUdD9ebAIBBVDeYLSYOjelKIQVAqlCUqd+Xx+2rlj1hGd+2Du7kl2U8/kytPMpnDVy3kMBJVCSYKOO7kreDd3zNodM+6Bt4LaqWfyHOxutF97Y70BgkqhFEGTTucoz9dO+Llj1u2ZS9CsEA8IuieUIOhoow58enoD/cxZE6/BaxSKYQM5qIqfcDDm4nQxfuoZvv3DvgQBHEvH8FFhvEcY9gFB5VFc0A1/SfJzx3DEBcdruLWBC+RwbdBhPzJdjJt6hm+gsy8+gCM2xQzPpuDiPdJhH/MVMUm7/qZaylqh1gq6Iem5Y3zwRbBGmHuKfXzx8nQx4dQzwX3KQQBHbIoZI6iP90gf5UAJKoVS2qCbEMwdYyIuWKVgzQdy6DU9b8zydDFu6hkO4uCXIIAjNsWMSd9vTId9QFBx1C7o4twxtqwL11wgh44sPguC4JdKUF8I8ovey9wxH5tixgvq82PCAQEIKoXaBfVzx9iIC2NLsOYDOaiTZFqPy9PFuKln0m3QIIAjNsWME5Q3psM+IKg46hfUz+FuutqutejWfCDH9O33tz1XB6eni/EPaIr04k0AR2SKGSeo3ZgK+4Cg4tiBoE0AgkoBgkaBoFKAoFEgqBQgaJSIoAj5EJhB7LuDoHVdfWSwNoPYdwdB67r6yGBtBrHvrhWCRug1P4d2ZABBG5tDOzKAoI3NoR0ZQNDG5tCODCBoY3NoRwYQtLE5tCODtgoKGgIEBaKBoEA0EBSIBoIC0bRS0Jfb+OTKJUHRAQPzEpsht5wMdFBhRR9jwiHgVX0CHQPBZ7/uQ7RS0GGf/qsKfhCAfgpFNXDKlX4Miumq6BM83ZCSfPbrPkQbBaWg0JwPzdkGGzE9zPFIte0Y2lDa6j6GfrRANZ/gvvcbDtmlGMh1H6KNggYhzVWhvt+Xb6vKgVOu9GPQ4wcq+gQ/PgTP4Vj7ISBoJejn73yV93GSG8IpV/kx9HxplX0CCLqa6gW9P+MHVnyoogbmlKv8GO6ZQpV8Agi6msoFdQ+WqC6XPN9tAe5tv6WSDCDoairuJOny0+dUDfSItAo/huseVSYoOkkrqHaYiR/pR+M003dVjIPalKv7GGbK3so+gTYSw0zZ8GNuK2LID+m971WVC6dc3cfgcrOqT2AfVpTnQ7RSUNAcICgQDQQFooGgQDQQFIgGggLRQFCp2AmBUlOjj5cmAHy+OJ0/HncOP5nF+Xz2s8vazrEGIKhUni/0fH/jcFLKWXdJ0NGR2vNE7zw2EwSOSda9AYJKhQXlF8OyoPTO4+eX89Hhp+f/vuQD92cidQgqF2tmQgVioqf3VVU51eWjoOIfv/rGCjq2Jo/2qQiFoFIJS9BE/T86uDQlKC08HrOhtEVX8Se2AFXSHuxRKxSCSoUFHamSU/d7Ho9PtaCzLrk5NhOpmhXdSXIFqN5zb4CgUrG9eJZtTEskqCkfWULfKFUF6Kxr5v811u4JEFQqugR9POZitPPqD1yCjjuBuL6wVAWoqu51gxWCghowVfyYukNaQ1vFp1qYrgTVBeiJqfkhKKgBboMmyket3bhj26CpgVF2URWgTlC0QUENsKCz7uEnU3iqslT7SL147S2RmK6R7sLbKh69eFADdhx0pMRUbdCDS3IyseOgphPvevMj2td2kjAOCsQQ+fEz8laDgaANZ3S0+A5+iweCWPrlHXczAVAfEBSIBoIC0UBQIBoICkQDQYFoICgQDQQFooGgQDQQFIgGggLRQFAgGggKRANBgWggKBANBAWigaBANBAUiAaCAtFAUCAaCApEA0GBaCAoEA0EBaKBoEA0EBSIBoIC0UBQIBoICkQDQYFoICgQDQQFooGgQDQQFIgGggLRQFAgGgi6G+yMm362WM/zRThPR3otK6mN5u7iGUAbAQTdDeUJmnAyGzgHQUEe1paNeRh3dCKPx8uiZwJBQR5KEXTElfvjcf4pjiEoyIMV9PniaESNSF3tn5j31f9/O46s6Rk5Owf/63QchSVn8uqbxM7j+XzR4SPCRTr6CIKCPHhBPztWFfXItCVPWMn4GtXldlFD60635NXPbY+J9zuaRxY/g6AgB15Q0m3WpZKPZt9mJY+oeDyaL66xpa5CD/RTHSY9VbfbTy2eLi+qIyAoWI8X1E6uTSWlFTStq13j2nncCVuciS02zSzytDfvR3N6Ly+OISjIgRfUdsQJqyS9Z5f82tg0OZe6RKpteaTboLSiOk62JdAhp4NFbsZCULCetKDUfTkJysycgj7+u01MyRkRlArTYBGCgtykBTXqrRN0sYo3Lde5FTSo4oNGarCIKh7kZlHQI12MrhZ0qZNk+kVz041K9BATd5LI93F6UW1CJwnkZbmKNxXxKkGXhpnsCJT+QSk5+KlJwrVogxEnv/gFhplADhY6SdrQU1VLrxR0caDe/qyvm6bJqz9dGFXZ3OgiBupB1WT8sJnY8ar9AYI2C+pE0b/x2+sgKNg1yaqb6yAo2Dmj6D2kBgjaTH5YJvZePv659ZHIc92BESDoprREFghaI2VexLbIAkFrJHIt/gV2DAT1QFCBQFAPBBUIBPVAUIFAUA8EFQgE9UBQgZQl6PSqpzj7GNn09P5u1TG9wUYWqfRu1EHX9vDXd2pB5/t0w9m/3Kr3+7FDX24XMwtPDoIKpDRB35Icw/OHiFCZgr6N+bxuh+nVgGS85q2Ts4/TN1+Rd5Nf8u7DPqnYjxwOQRtHuYJGjSpF0HtbIr7cXvMms1WlPn37Z3pv+LXZ3eTndgiBoI1jS0Htfd32xuxA0ImuX5U0uh5Wa1++p1qY6uKX26+ven213E/7Z7ZOf/37s4+q/qaKekJ1t1p+bfVxgnrruASlvL579zB/+vCd2USFp3ZPH25OR7cHBlrQiTotn8uXWlDd1OhFPveuvx4QszGHoEtwFd9X371y4PXd9Oqaal9auyfVBrT2cnv+8HRz/jB9c8deant4K9XdZNC92klpM1H7RUrQiWtFcBOW6vrvv1X79+3u1Ejt8znx6dCLWlXJT/QfisnFnJz7DChBBVJaFX9lZDGGqGpXOaiMIJ10JfyRXkgM+//cF4a8lQ+hRVIn2GHS4+6QFXRIa1xov6GF++v5cBD4rBz1bVCVIGutinD62+Bc+OQgqGSKCKpjC5MTJ5nuvmhVjT0kjnGAVFBWZgjKW00SxkQqBAfRNujUNTS5DXpDB07f/eNDus1pxLWnc28FPf8r1/f8JgQVTgFBxweXo8NPs+6J84aqTyoH2Z5NS1BziE2eKv3sTpIXVC88vf/LO9simOjRJmu8OR1Xgg7ISLsjBJXP9oI+X5zMlaDzUdBJGp4/kB5DV4IutkGjgto2qFqlLVQgKq30+JGzxwk6p9at2s9W8femqTrs2XEnKiYfzPsmFTod3QZ9o/9ClJacC9qgDWB7QWfdUy3oOBD06aZPo+S/49LL1Nm/DXrxUUFtL55Wueeue/E04h4Zxbfj8O63AT128PrOp6eaqD3dbOgN+HSCXjx18jkXPjkIKpjiJWhSwvN/ZQBBBbK9oNwGHW3w0HPhQFCBFBDUjNZvNLGJbGLXIvJePloSfoGQjxop8yK2RRYIWiORa7HrCq61FBV06bf4fQCCyqGMEtQ8HXW8P41QCCqHEgSlp+0TIwwzgdIpQVAaqCfGqOJB6ZRSgprbRDBQD8qnBEH5cf6jfG1QG0i0juiN8HN357uLQ8qVp7m1/qqX8xgIKocyBDVd+XzlpwskWrtjRhiIFdTGIeU52N2ptDa2xABB5VCKoPnxgUTr9swlaFaUEwTdG2oWNH2vu74ByYQs8RpFI9lYJqriJxyPvBg75OOQ+A4o+xLEMC0dw0eFIU9h5BPtgJgkaWxqWFRQPVlJriaoDyTicCAOWXJrAxfL5Nqgw34kdsjFIfE9pPbFxzDF4o341noX8pSOfHJniRJUDmWUoGagPtfdTOlAIh9/FKwR5u54H2K/HDsUxiEFt+oHMUyxeCMjqA95Sh8FQQVSgqB2mCnPQH0QSGTCgVilYM3HMuk1HUS0HDvk4pA4jolfghimWLyRSd9vTEc+QVCBlCDoJgP1i4FEtqwL11wsk75B/ix4DsRSCeoLQX7Re5mgkVi8kRfU58eEAwIQVA41l6A+kMgGHRlbgjUfy0SdJNN6XI4dcnFI6TZoEMMUizdygvLGdOQTBBVICYJu0gYNHuhlutqutejWfCzT9O33tz1XB6djh/wzyiK9eBPDFIk3coLajanIJwgqkDIE3aAX3wwgqBxKEXTfgKBygKARYtdi1YVaSUvCL6SGfLjpx/f8jvpGfXFtyTP23S2VoFkT6TaZyLX4iWXjq9gSWcQKqgvR6GTkzSVyLSCowDxj3128DZrsT/VORK4FBBWYZ+y7y+okjTKnfG4gkWsBQQXmGfvusnvxj8d7U4pGrgUEFZhn7LvLEJQ683X5Wf1EN5FrAUEF5hn77qKCjjt1VvD+LrwlSproJnItIKjAPGNfZETQpNM5Wv3tl8u04oluIGhT8ox9kUuCjmrvwHtBq5noBoI2Jc+YHQJ+SZpWONFNZkySE7SWjwi2RsBv8ZVOdKOJ/LGiBBWYZ8wOCYJWPNENBG1KnjE7hAha5UQ3ELQpecbskCJohRPdQNCm5BmzQ4ygVU50E7kWEFRgnjE7BAhaPZFrAUEF5hn77iDoprREFghaI5FrAUEF5hn77toqaKO+uLbkGfvuIOimtEQWCFojZV7EtsgCQXdLD3k2I08IijxF5wlBkafoPCEo8hSdJwRFnqLzhKDIU3SebRUUNAQICkQDQYFoICgQDQQFommloC+38SftVAIF8+nQPp1nLVnrAIN0hpXn66bEKvmztlLQYZ/+q4lJP8yzjqyfbsiLdIZV52vyrOCztlFQerZDznmSS2BopzrTkYA1ZH3f+w3PguYzrDpfk2cVn7WNggaz2FXPy7duorL0BHqV8eNDMLVpTfmaPKv4rBC0Yp7ef2XjTmsSNDX3bm35mhzK/6wQtOrM6GkUHz62QtAqPisErYE6RSF2JShRdp5tFLTeTpLJsMZOkv8LrK+TlBIUnaSi1DnMRM/zmb57qHOYyWhR7zDT3E5sXfZnbaWg/Kjberg3z9/nPGvJ2j4JqM58dZ4VfNZWCgqaAwQFooGgQDQQFIgGggLRQFAgGggqjlnXTgP0x+7q+f6eL7K3z352WfaJ7QQIKpLHz/PoNVo1I+D48FNZZ7NLIKhIcgk6W1nAripeGwQEFYkRlAx8PP6FqvJPHo/N/L4jVfWf8E5jmgqQNqS30AIVraO9KEIhqEhCQQ8uzQSqI/pfrTwes6HJEfl5SrNTn/ottDDrqoXxwT60QiGoSEJBT+b2n1Mtnik552whT6jqtpgFncbxPtTxEFQkoaCnc/ePKRTZPN0EnXWNoW6L19Kr2mQgqEiyBOUBKO2gUVFPT306d1t89wqCgspYWYIyvhOfHFy6LShBQQ1kCJoaWPICqrfdFrRBQQ1kCKq76FRg6p2oF69LTvrHbaGF54sj9OJBhWQJqgc5ueNuevDU+NQmui0YBwUyWP1L0uqtjQGCNhj8Fg9Eg7uZANgxEBSIBoIC0UBQIBoICkQDQYFoICgQDQQFooGgQDQQFIgGggLRQFAgGggKRANBgWggKBANBAWigaBANBAUiAaCAtFAUCAaCApEA0GBaCAoEA0EBaKBoEA0EBSIBoIC0UBQIBoICkQDQYFoICgQDQQFooGgQDQQFIgGggLRQFAgGghaL3ZOzVVTcDweH82fL5b2iLwVSXuj2bsoJ+FA0Hqxgq4SKSIozRW/TtCEU97AOQgKFhibmYqVTdlqRLRJ7Oxyq1LW/j4ed/JP4AVBwQJW0FXF4XaCjrhMfjzOP8kxBAULWEFJueeLo1FHT/2qKmZj1ayrqmhfxdOqrtyp5jZv6WWzcPi3Y3vcnKboDEpOlXpiJ/UMko/lJBwIWi9hCfp88dmxck1VyrbpaBY/s4KaVTLZCco7W2s73lDa4nRLXv3cNnSXkl/ISTgQtF58G/SEFDuZ87/qjVNeVO4cscC0qkvGxHaSTNs10XvQ4shLGeindtCzc5vd0skv5iQcCFovrhevjaM6mKtZmuKdF8cs6KwblIjf8Fu66UpHmqP5DbubLTbNlPK0y3LyCzkJB4LWixWUxDCNSi74Orqy1/U1iUnbgu6OFdS+pXpEtkm60NlSbcsj16lSu6WSj+UkHAhaL+OgK7MgKJV2BQR9/Hebqto3IiglH8tJOBC0XmKCOg03rOJTgs66PBJlBA2q+CD5WE7CgaD1siyo6q+cztmVZLGTdMouJXo0aqGTlC5BTb+I+06JHmLiTpJNPp6TcCBovSwLaut4PyT0RXqYiTaM7DATDV+a9xYFtcNOepA0Ofgp98SWk1/ISTgQtF4igvqxd7O4PFCvFw7/7gfqfRcr7CSZDphOP3n1p4swzfgiBurBjsjx02hDgKB7CQQFooGgQDQQtFH8sEzsvRj/zLdbzuR2kprok0ulFvvuIGj511lYaqJPDoIS219mAd9a4dREnxwEJSIX5l9gx0BQDwQVCAT1QFCBQFAPBBUIBPVAUIFAUA8EFUhZgk6veoqzj5FNT+/vVh3TG2xkkUrvRh10bQ9/facWdL5PN5z9y616vx879OV2MbPw5CCoQEoT9C3JMTx/iAiVKejbmM/rdpheDUjGa946Ofs4ffMVeTf5Je8+7JOK/cjhELRxlCto1KhSBL23JeLL7TVvMltV6tO3f6b3hl+b3U1+bocQCNo4thSU79i2kbGhoBNdvyppdD2s1r58T7Uw1cUvt19f9fpquZ/2z2yd/vr3Zx9V/U0V9YTqbrX82urjBPXWcQlKeX337mH+9OE7s4kKT+2ePtycjm4PDLSgE3VaPpcvtaC6qdGLfO5dfz0gZmMOQZfgKr6vvnvlwOu76dU11b60dk+qDWjt5fb84enm/GH65o691PbwVqq7yaB7tZPSZqL2i5SgE9eK4CYs1fXff6v279vdqZHa53Pi06EXtaqSn+g/FJOLOTn3GVCCCqTcTtK1WaFqVzmojCCddCX8kV5IDPv/3BeGvJUPoUVSJ9hh0uPukBV0SGtcaL+hhfvr+XAQ+Kwc9W1QlSBrrYpw+tvgXPjkIKhkighKETCfkhMnme6+aFWNPSSOcYBUUFZmCMpbTRLGRCoEB9E26NQ1NLkNekMHTt/940O6zWnEtadzbwU9/yvX9/wmBBVOAUHHB5cjCsE+cd5Q9UnlINuzaQlqDrHJU6Wf3UnyguqFp/d/eWdbBBM92mSNN6fjStABGWl3hKDy2V7Q54uTuRJUP9U3GGYiPYauBF1sg0YFtW1QtUpbqEBUWunxI2ePE3ROrVu1n63i701Tddiz405UTD6Y900qdDq6DfpG/4UoLTkXtEEbwPaCzrqnWtBxIOjTTZ9GyX/HpZeps38b9OKjgtpePK1yz1334mnEPTKKb8fh3W8Deuzg9Z1PTzVRe7rZ0Bvw6QS9eOrkcy58chBUMMVL0GTNM/ubAwQVSOE26GiDZ50LB4IKpICgZrR+o/lMZBMRFCEf2yaHkI/y2f4yC/jWCqcm+uQgKBG5MLuu4KRQUKlsqhJ06bf4fSByYXYthhQKKpVNlSXoWD9rf7w/jdDIhdm1GFIoqFQ2FQpKD9knRhhm2n8KKpVNhYLSQD0xRhW//xRUKptKS1BzmwgG6ltAQaWyqbYNSkXoqK42aPVRT5ELs2sxpFBQqWwqHWbSXfnays/qo54iF2bXYkihoFLZ7NE4aNVRTxB0BQWVymYvBS0/6gkxSWuo6Tvenqigeo6S2oZBq456Qgm6goJlXjbVD9TXdjdTpVFPmsiF2bUYUiioVDY1DDPVNVBfddQTBF1BQaWy2aOB+qqjniDoCgoqlc2elaBVRj1B0BUUVCqbfWqDVh71FLkwuxZDCgWVyqbSYaZ6e/HVE7kwuxZDCgWVymaPxkGrJ3Jhdi2GFAoqlQ0E3YDtL7OAb61waqJPbmNB3azje35HPQTdNrldl6Cz7h41PpnIhflJfRT81rJpp6C6ED2pWpl6iVwYCLptcrsXVJHsT/VORC4MBN02ORGC0ijo/jxYBIKWmZwQQWkwdG9K0ciFgaDbJidDUOrM5/PTzh2zjujcB3N3T7KbeiZXnmY2hatezmMiFwaCbpucBEHHndwVvJs7Zu2OGffAW0Ht1DN5DnY32q+9sd4QuTAQdNvkdi9o0ukc5fnaCT93zLo9cwmaFeIBQWO0U9DRRh349PQG+pmzJl6D1ygUwwZyUBU/4WDMxeli/NQzfPuHfQkCOJaO4aPCeI8w7AOCVpJcs35J8nPHcMQFx2u4tYEL5HBt0GE/Ml2Mm3qGb6CzLz6AIzbFDM+m4PELZq8AAASaSURBVOI90mEf8xUxSTUKuvYighUU/C0+PXeMD74I1ghzT7GPL16eLiaceia4TzkI4IhNMWME9fEe6aMckb/cGgUtWKxk08oSdEOCuWNMxAWrFKz5QA69pueNWZ4uxk09w0Ec/BIEcMSmmDHp+43psA8IWkVyzRJ0ce4YW9aFay6QQ0cWnwVB8EslqC8E+UXvZe6Yj00x4wX1+THhgEDkwkDQbZNrlqB+7hgbcWFsCdZ8IAd1kkzrcXm6GDf1TLoNGgRwxKaYcYLyxnTYBwStIrmGCerncDddbddadGs+kGP69vvbnquD09PF+Ac0RXrxJoAjMsWME9RuTIV9QNAqkmuaoE0gcmEg6LbJQdDyiVwYCLptchC0fCIXBoJumxwELZ/tL7OAb61waqJPDoIS219mAd9a4dREnxwEJba/zAK+tcKpiT45CJpBT3Jy5aYm+uTWpgZBBSZXbmqiT25tahBUYHLlpib65NamBkEFJlduaqJPbm1qEFRgcuWmJvrk1qYGQQUmV25qok9ubWptFRQ0BAgKRANBgWggKBANBAWiaZOgL7duTmVeDN4plBzFAwzMS2xO3C1S0zGDpZzchOO5i5xcEO1VxpVLzYGx5sK1SdBhn/4LF4N3iiTHof/6uRMlnBwnU9LJ6RSVTEVOTn1Cq2MZV86lluPCtUhQigX1YdI6AM+/Uyg5GyM9zPEQtfWpcTJlndzceFDk5Ob3vd/YialKuHI+tRwXrkWCBpHMy7HNhZIjlAQv326ZVDo1TqbEk6NnCRQ5ufmPbnLeMq7cj6mpftdcOAhakqD6iTtf5X2A5KrUOJnyTk5Pflbk5ObRuSe3Prn0Q9/WXDgIWlIhdcaPqPiwXb0XnpxJpryTcw8I2vbk5hUKuu7CQdBSHHCPktg2ucUGQ6knZ7sgJShVtqBrL1yLBK2uk6SLAf9u0dTManmdJNcFKUGpMq5cIOj6C9ciQasbZuKH+NFgzvTdlkONPjWbTFnDTGb+3UInFyhVxpXz5fH6C9cmQfnptkP3fF37UjS5IT+W9763fXLByXEyJZ2cLZuKnBwrVdaVc6nluHBtEhQ0EAgKRANBgWggKBANBAWigaBANBBUHLOunQboj93V8/09X2Rvn/3ssuwT2wkQVCSPn+fRa7RqRsDx4aeyzmaXQFCR5BJ0trKAXVW8NggIKhIjKBn4ePwLVeWfPB6b+X1Hquo/4Z3GNBUgbUhvoQUqWkd7UYRCUJGEgh5cmglUR/S/Wnk8ZkOTI/LzlGanPvVbaGHWVQvjg31ohUJQkYSCnsztP6daPFNyztlCnlDVbTELOo3jfajjIahIQkFP5+4fUyiyeboJOusaQ90Wr6VXtclAUJFkCcoDUNpBo6Kenvp07rb47hUEBZWxsgRlfCc+Obh0W1CCghrIEDQ1sOQFVG+7LWiDghrIEFR30anA1DtRL16XnPSP20ILzxdH6MWDCskSVA9ycsfd9OCp8alNdFswDgpksPqXpNVbGwMEbTD4LR6IBnczAbBjICgQDQQFooGgQDQQFIgGggLRQFAgGggKRANBgWggKBANBAWi+X/SDsjvmYHf3wAAAABJRU5ErkJggg==" /></p>
+<p>As one can see from above, the <em>best accuracy rate</em> belongs to <strong>Random Forest and GBM stacked together</strong> and <strong>Random Forest</strong> - both accuracy values are identical.</p>
+<p>The <em>shortest training speed</em> belongs to <strong>Random Forest</strong>, by a huge margin.</p>
+<p>The <em>shortest prediction speed</em> belongs to <strong>Generalized Boosted Trees</strong>, but only by a matter of seconds, so the difference is trivial.</p>
+<hr />
+</div>
+<div id="result" class="section level1">
+<h1>Result</h1>
+<p>Given the analysis presented, there is no doubt that the best accuracy combined with best time efficiency belongs to <strong>Random Forest</strong>. Thus this will be our model of choice in predicting the <code>test</code> set.</p>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="kw">print</span>(
+    test_result &lt;-<span class="st"> </span><span class="kw">predict</span>(fitRF, test)
+)</code></pre>
+<pre><code>##  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
+##  B  A  B  A  A  E  D  B  A  A  B  C  B  A  E  E  A  B  B  B 
+## Levels: A B C D E</code></pre>
+<pre class="sourceCode r"><code class="sourceCode r"><span class="co"># save results into separate files in appropriate directory</span>
+<span class="kw">source</span>(<span class="st">'./pml_writing_files.R'</span>)
+<span class="kw">pml_write_files</span>(<span class="kw">as.character</span>(<span class="kw">data.frame</span>(test_result)$test_result))</code></pre>
 </div>
 
 

@@ -148,4 +148,282 @@ c(ncol(train), ncol(test))
 
 ---
 
+
 # Cross Validation
+
+We set `test` set aside and split the `train` data into two sections for cross validation. We will allocate 70% of the data to train the model and 30% to validate it.
+
+We expect that the **out-of-bag (OOB)** error rates returned by the models should be good estimate for the out of sample error rate. We will get actual estimates of error rates from the **accuracies** achieved by the models.
+
+```r
+# set seed
+set.seed(3433)
+# split train data set
+inTrain <- createDataPartition(train$classe, p = 0.7, list = FALSE)
+trainData <- train[inTrain, ]
+validation <- train[-inTrain, ]
+# print out dimensions of each data sets
+rbind(trainData = dim(trainData), validation = dim(validation), test = dim(test))
+```
+
+```
+##             [,1] [,2]
+## trainData  13737   53
+## validation  5885   53
+## test          20   53
+```
+
+---
+
+# Comparing Models
+
+For this project, I choose to predict the `classe` variable with all the other variables using a **random forest (`“rf”`)** and **boosted trees (`“gbm”`)**. Finally, I will stack the predictions together using random forests (“rf”) for a combined model.
+
+First, however, we will use parallel processing capabilities to speed up the training speed, since creating four predictor models is computationally expensive.
+
+```r
+# process in parallel
+library(doParallel)
+registerDoSEQ()
+cl <- makeCluster(detectCores(), type='PSOCK')
+registerDoParallel(cl)
+```
+
+Now we are ready to fit the model predictors, but not without setting a seed first:
+
+```r
+# set seed
+set.seed(62433)
+# load packages
+library(randomForest)
+# fitting random forest model predictor and record elapsed time, printing out results
+elapsedFitRF <- system.time(
+    print(
+        fitRF <- randomForest(classe ~ ., data=trainData, method="rf")
+    )
+)
+```
+
+```
+## 
+## Call:
+##  randomForest(formula = classe ~ ., data = trainData, method = "rf") 
+##                Type of random forest: classification
+##                      Number of trees: 500
+## No. of variables tried at each split: 7
+## 
+##         OOB estimate of  error rate: 0.46%
+## Confusion matrix:
+##      A    B    C    D    E  class.error
+## A 3905    1    0    0    0 0.0002560164
+## B   13 2643    2    0    0 0.0056433409
+## C    0   12 2381    3    0 0.0062604341
+## D    0    0   21 2229    2 0.0102131439
+## E    0    0    4    5 2516 0.0035643564
+```
+
+
+```r
+# fitting boosted trees model predictor and record elapsed time, printing out results
+library(gbm)
+elapsedFitGBM <- system.time(
+    print(
+        fitGBM <- train(classe ~ ., data=trainData, method="gbm", verbose=FALSE)
+    )
+)
+```
+
+```
+## Stochastic Gradient Boosting 
+## 
+## 13737 samples
+##    52 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## No pre-processing
+## Resampling: Bootstrapped (25 reps) 
+## Summary of sample sizes: 13737, 13737, 13737, 13737, 13737, 13737, ... 
+## Resampling results across tuning parameters:
+## 
+##   interaction.depth  n.trees  Accuracy   Kappa      Accuracy SD
+##   1                   50      0.7505262  0.6836489  0.005733940
+##   1                  100      0.8186235  0.7704259  0.006455805
+##   1                  150      0.8502340  0.8105100  0.005871803
+##   2                   50      0.8520247  0.8125426  0.005809940
+##   2                  100      0.9027890  0.8770091  0.003699316
+##   2                  150      0.9271088  0.9078027  0.003841337
+##   3                   50      0.8932589  0.8649095  0.005442478
+##   3                  100      0.9382401  0.9218727  0.003587542
+##   3                  150      0.9569762  0.9455814  0.002852928
+##   Kappa SD   
+##   0.007402873
+##   0.008172871
+##   0.007393995
+##   0.007316754
+##   0.004682730
+##   0.004846920
+##   0.006864450
+##   0.004528454
+##   0.003616718
+## 
+## Tuning parameter 'shrinkage' was held constant at a value of 0.1
+## 
+## Tuning parameter 'n.minobsinnode' was held constant at a value of 10
+## Accuracy was used to select the optimal model using  the largest value.
+## The final values used for the model were n.trees = 150,
+##  interaction.depth = 3, shrinkage = 0.1 and n.minobsinnode = 10.
+```
+
+After we have trained our models, we predict:
+
+```r
+# predict using model predictors and record elapsed time
+elapsedPredRF <- system.time(
+    predRF <- predict(fitRF, newdata=validation)
+)
+elapsedPredGBM <- system.time(
+    predGBM <- predict(fitGBM, newdata=validation)
+)
+
+# create new dataframe for stacking predictors
+predAll <- data.frame(predRF, predGBM, classe = validation$classe)
+elapsedFitStacked <- system.time(
+    fitStacked <- randomForest(classe ~ ., data=predAll, method = 'rf')
+)
+
+# predicting with stacked predictors
+elapsedPredStacked <- system.time(
+    predStacked <- predict(fitStacked, newdata=validation)
+)
+```
+
+From the above, we can see that **randomForest** is the better performing algorithm with **0.46% out-of-bag (OOB) error rate**, which is what we expect the out of sample error rate to be.
+
+---
+
+# Run-Time Graphical Analysis of Models
+
+In this section we will attempt to see what is the best model to use, considering trade-offs. First, we need to the confusion matrices containing analysis of the models into variables:
+
+```r
+# confusion matrices
+cmRF <- confusionMatrix(predRF, validation$classe)
+cmGBM <- confusionMatrix(predGBM, validation$classe)
+cmStacked <- confusionMatrix(predStacked, validation$classe)
+
+# create table
+analysis_table <- data.frame("Model" = c("Random Forest",
+                                          "Generalized Boosted Trees",
+                                          "Random Forest + GBM Stacked"),
+                             "Accuracy" = 100 * c(cmRF$overall[[1]],
+                                                  cmGBM$overall[[1]],
+                                                  cmStacked$overall[[1]]),
+                             "Training Speed" = c(elapsedFitRF[['elapsed']],
+                                                  elapsedFitGBM[['elapsed']],
+                                                  (elapsedFitRF[['elapsed']] +
+                                                       elapsedFitGBM[['elapsed']] +
+                                                       elapsedFitStacked[['elapsed']])),
+                             "Prediction Speed" = c(elapsedPredRF[['elapsed']],
+                                                    elapsedPredGBM[['elapsed']],
+                                                    (elapsedPredRF[['elapsed']] +
+                                                         elapsedPredGBM[['elapsed']] +
+                                                         elapsedPredStacked[['elapsed']])))
+                             
+names(analysis_table) <- c('Model', 'Accuracy', 'Training Speed (sec)', 'Prediction Speed (sec)')
+
+# round numeric columns
+analysis_table[, 2:4] <- round(analysis_table[, 2:4], digits = 2)
+
+# display table nicely
+kable(analysis_table,
+      align = "c")
+```
+
+            Model               Accuracy    Training Speed (sec)    Prediction Speed (sec) 
+-----------------------------  ----------  ----------------------  ------------------------
+        Random Forest            99.27             36.53                     0.84          
+  Generalized Boosted Trees      96.38            1625.36                    0.34          
+ Random Forest + GBM Stacked     99.27            1663.28                    1.23          
+
+To better visualize the run-time results, we can also make a bar graph:
+
+```r
+library(ggplot2)
+# accuracy comparisons
+accuracy_plot <- ggplot(transform(analysis_table,
+                                  Model = reorder(Model, Accuracy)),
+                        aes(x = Model, y = Accuracy)) +
+    geom_bar(stat="identity",
+             aes(fill = Accuracy == max(Accuracy)),
+             position=position_dodge()) +
+    scale_fill_discrete(guide = 'none') + 
+    labs(x = 'Model',
+         y = 'Rate (%)',
+         title = 'Model Accuracy') +
+    coord_flip()
+# training speed comparisons
+train_speed_plot <- ggplot(transform(analysis_table,
+                                     Model = reorder(Model, analysis_table[, 3])),
+                           aes(x = Model, y = analysis_table[, 3])) + 
+    geom_bar(stat="identity",
+             aes(fill = analysis_table[, 3] == min(analysis_table[, 3])),
+             position=position_dodge()) + 
+    labs(x = 'Model',
+         y = 'Time (sec)',
+         title = 'Training Speed') + 
+    scale_fill_discrete(guide = 'none') + 
+    coord_flip()
+# prediction speed comparisons
+pred_speed_plot <- ggplot(transform(analysis_table,
+                                    Model = reorder(Model, analysis_table[, 4])),
+                          aes(x = Model, y = analysis_table[, 4])) + 
+    geom_bar(stat="identity",
+             aes(fill = analysis_table[, 4] == min(analysis_table[, 4])), 
+             position=position_dodge()) + 
+    labs(x = 'Model',
+         y = 'Time (sec)',
+         title = 'Prediction Speed') + 
+    scale_fill_discrete(guide = 'none') + 
+    coord_flip()
+# plot all three at once
+library(gridExtra)
+grid.arrange(accuracy_plot,
+             train_speed_plot,
+             pred_speed_plot,
+             ncol = 1)
+```
+
+![](PracticalMachineLearning_CourseProject_files/figure-html/unnamed-chunk-15-1.png) 
+
+As one can see from above, the *best accuracy rate* belongs to **Random Forest and GBM stacked together** and **Random Forest** - both accuracy values are identical.
+
+The *shortest training speed* belongs to **Random Forest**, by a huge margin.
+
+The *shortest prediction speed* belongs to **Generalized Boosted Trees**, but only by a matter of seconds, so the difference is trivial.
+
+---
+
+# Result
+
+Given the analysis presented, there is no doubt that the best accuracy combined with best time efficiency belongs to **Random Forest**. Thus this will be our model of choice in predicting the `test` set.
+
+
+```r
+print(
+    test_result <- predict(fitRF, test)
+)
+```
+
+```
+##  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 
+##  B  A  B  A  A  E  D  B  A  A  B  C  B  A  E  E  A  B  B  B 
+## Levels: A B C D E
+```
+
+
+```r
+# save results into separate files in appropriate directory
+source('./pml_writing_files.R')
+pml_write_files(as.character(data.frame(test_result)$test_result))
+```
+
