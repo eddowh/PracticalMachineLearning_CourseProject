@@ -3,11 +3,14 @@ title: "Practical Machine Learning Course Project"
 author: "Eddo W. Hintoso"
 date: "September 22, 2015"
 output:
-    html_document:
-        keep_md: true
-        toc: yes
-        theme: readable
-        highlight: tango
+  pdf_document:
+    toc: yes
+    highlight: tango
+  html_document:
+    highlight: tango
+    keep_md: yes
+    theme: readable
+    toc: yes
 ---
 
 ```{r, warning = FALSE, message = FALSE, echo = FALSE}
